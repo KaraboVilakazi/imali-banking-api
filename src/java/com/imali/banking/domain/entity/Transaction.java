@@ -45,6 +45,14 @@ public class Transaction {
     @JoinColumn(name = "destination_account_id")
     private Account destinationAccount;
 
+    // Fraud detection — flagged by rule engine during transaction processing
+    @Column(nullable = false)
+    @Builder.Default
+    private boolean flagged = false;
+
+    @Column(length = 255)
+    private String fraudReason;
+
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 

@@ -1,6 +1,6 @@
 # Imali Banking API
 
-A production-grade RESTful banking API built with Spring Boot 3 and Java 17. Imali (meaning "money" in Zulu) provides core retail banking operations including user authentication, account management, and financial transactions — secured with JWT and backed by PostgreSQL.
+A production-grade RESTful banking API built with Spring Boot 3 and Java 17. Imali (meaning *money* in Zulu) provides core retail banking operations including user authentication, account management, and financial transactions — secured with JWT, backed by PostgreSQL, and equipped with audit logging and fraud detection.
 
 ---
 
@@ -8,18 +8,12 @@ A production-grade RESTful banking API built with Spring Boot 3 and Java 17. Ima
 
 - [Features](#features)
 - [Tech Stack](#tech-stack)
+- [Architecture](#architecture)
 - [Prerequisites](#prerequisites)
 - [Getting Started](#getting-started)
-  - [1. Clone the Repository](#1-clone-the-repository)
-  - [2. Set Up PostgreSQL](#2-set-up-postgresql)
-  - [3. Configure Environment Variables](#3-configure-environment-variables)
-  - [4. Build and Run](#4-build-and-run)
 - [Running the Tests](#running-the-tests)
 - [API Reference](#api-reference)
-  - [Authentication](#authentication)
-  - [Accounts](#accounts)
-  - [Transactions](#transactions)
-- [Testing the Application with curl](#testing-the-application-with-curl)
+- [Testing with curl](#testing-with-curl)
 - [Project Structure](#project-structure)
 
 ---
@@ -29,36 +23,63 @@ A production-grade RESTful banking API built with Spring Boot 3 and Java 17. Ima
 - User registration and login with JWT authentication (24-hour token expiry)
 - Create and manage bank accounts (Cheque, Savings, Fixed Deposit)
 - Deposit, withdraw, and transfer funds between accounts
-- Paginated transaction history with full audit trail
-- Concurrency-safe transfers using pessimistic locking and deadlock prevention
+- **Concurrency-safe transfers** using pessimistic locking and deadlock prevention
+- **Fraud detection** — flags large transactions (>R10,000) and rapid repeated transfers
+- **Full audit logging** — every login, transaction, and fraud event is recorded
+- Paginated transaction history with balance snapshots on every record
 - Comprehensive error handling with descriptive HTTP responses
-- Role-based access control (CUSTOMER / ADMIN)
+- Role-based access control (`CUSTOMER` / `ADMIN`)
+- **Swagger UI** — interactive API documentation at `/swagger-ui/index.html`
 
 ---
 
 ## Tech Stack
 
-| Layer        | Technology                        |
-|--------------|-----------------------------------|
-| Language     | Java 17                           |
-| Framework    | Spring Boot 3.2.3                 |
-| Security     | Spring Security + JJWT            |
-| Persistence  | Spring Data JPA + Hibernate       |
-| Database     | PostgreSQL                        |
-| Build Tool   | Maven                             |
-| Test DB      | H2 (in-memory, test scope only)   |
+| Layer | Technology |
+|---|---|
+| Language | Java 17 |
+| Framework | Spring Boot 3.2.3 |
+| Security | Spring Security + JWT (JJWT) |
+| Persistence | Spring Data JPA + Hibernate |
+| Database | PostgreSQL |
+| Docs | Swagger UI (springdoc-openapi) |
+| Build | Maven |
+| Test DB | H2 (in-memory, test scope only) |
+
+---
+
+## Architecture
+
+```
+Client
+  │
+  ▼
+[JwtAuthenticationFilter]  ← validates Bearer token on every request
+  │
+  ▼
+[Controllers]              ← AuthController / AccountController / TransactionController
+  │
+  ▼
+[Services]                 ← Business logic, fraud detection, audit logging
+  │
+  ├──► [AccountService]    ← Pessimistic locking for concurrent transfers
+  ├──► [TransactionService]← Fraud detection rules + balance snapshots
+  └──► [AuditLogService]   ← Writes to audit_logs (REQUIRES_NEW propagation)
+  │
+  ▼
+[Repositories]             ← Spring Data JPA
+  │
+  ▼
+[PostgreSQL]               ← accounts / transactions / audit_logs
+```
 
 ---
 
 ## Prerequisites
 
-Make sure you have the following installed before running the application:
-
 - **Java 17+** — [Download JDK](https://adoptium.net/)
 - **Maven 3.8+** — [Download Maven](https://maven.apache.org/download.cgi)
 - **PostgreSQL 13+** — [Download PostgreSQL](https://www.postgresql.org/download/)
-
-Verify your installations:
 
 ```bash
 java -version
@@ -70,16 +91,14 @@ psql --version
 
 ## Getting Started
 
-### 1. Clone the Repository
+### 1. Clone the repository
 
 ```bash
-git clone https://github.com/karabovilakazi/imali-banking-api.git
+git clone https://github.com/KaraboVilakazi/imali-banking-api.git
 cd imali-banking-api
 ```
 
-### 2. Set Up PostgreSQL
-
-Start PostgreSQL and create the database:
+### 2. Set up PostgreSQL
 
 ```bash
 psql -U postgres
@@ -90,62 +109,57 @@ CREATE DATABASE imali_db;
 \q
 ```
 
-Hibernate will automatically create the required tables on first startup (`ddl-auto: update`).
+Hibernate will automatically create all tables on first startup (`ddl-auto: update`).
 
-### 3. Configure Environment Variables
-
-The application reads its database credentials and JWT secret from environment variables. Set the following before running:
+### 3. Configure environment variables
 
 ```bash
 export DB_USERNAME=postgres
 export DB_PASSWORD=your_postgres_password
-export JWT_SECRET=your_very_long_secret_key_at_least_32_characters
+export JWT_SECRET=your_64_char_hex_secret
 ```
 
-> **Note:** If you don't set these, the application falls back to the defaults defined in `application.yml` (`postgres` / `password`). For any non-local environment, always override these with strong values.
+> If not set, the app falls back to the defaults in `application.yml`. Always override these in non-local environments.
 
-### 4. Build and Run
+### 4. Build and run
 
 ```bash
-# Build the project (skips tests for a quick start)
 mvn clean install -DskipTests
-
-# Start the application
 mvn spring-boot:run
 ```
 
-The API will be available at: **http://localhost:8080**
+The API starts at **http://localhost:8080**.
 
-You should see output like:
+### 5. Swagger UI
+
 ```
-Started ImaliBankingApplication in X.XXX seconds
+http://localhost:8080/swagger-ui/index.html
 ```
 
 ---
 
 ## Running the Tests
 
-The test suite uses an H2 in-memory database, so no additional setup is required.
-
 ```bash
 mvn test
 ```
+
+Uses an H2 in-memory database — no additional setup required.
 
 ---
 
 ## API Reference
 
-All endpoints (except auth) require a `Bearer` JWT token in the `Authorization` header.
+All endpoints except `/api/v1/auth/**` require `Authorization: Bearer <token>`.
 
 ### Authentication
 
-#### Register a new user
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/api/v1/auth/register` | Register a new user |
+| `POST` | `/api/v1/auth/login` | Login and receive JWT |
 
-```
-POST /api/v1/auth/register
-```
-
-**Request body:**
+**Register — Request body:**
 ```json
 {
   "firstName": "Karabo",
@@ -155,33 +169,10 @@ POST /api/v1/auth/register
 }
 ```
 
-**Response `201 Created`:**
+**Login / Register — Response `200/201`:**
 ```json
 {
-  "token": "<jwt-token>"
-}
-```
-
----
-
-#### Login
-
-```
-POST /api/v1/auth/login
-```
-
-**Request body:**
-```json
-{
-  "email": "karabo@example.com",
-  "password": "securepassword123"
-}
-```
-
-**Response `200 OK`:**
-```json
-{
-  "token": "<jwt-token>"
+  "accessToken": "eyJhbGciOiJIUzI1NiJ9..."
 }
 ```
 
@@ -189,106 +180,68 @@ POST /api/v1/auth/login
 
 ### Accounts
 
-All account endpoints require `Authorization: Bearer <token>`.
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/api/v1/accounts` | Create a new account |
+| `GET` | `/api/v1/accounts` | List my accounts |
+| `GET` | `/api/v1/accounts/{id}` | Get account by ID |
 
-#### Create an account
-
-```
-POST /api/v1/accounts
-```
-
-**Request body:**
-```json
-{
-  "accountType": "CHEQUE"
-}
-```
-
-`accountType` must be one of: `CHEQUE`, `SAVINGS`, `FIXED_DEPOSIT`
-
----
-
-#### List all accounts
-
-```
-GET /api/v1/accounts
-```
-
----
-
-#### Get account by ID
-
-```
-GET /api/v1/accounts/{accountId}
-```
+`accountType` values: `CHEQUE`, `SAVINGS`, `FIXED_DEPOSIT`
 
 ---
 
 ### Transactions
 
-All transaction endpoints require `Authorization: Bearer <token>`.
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/api/v1/transactions/deposit` | Deposit funds |
+| `POST` | `/api/v1/transactions/withdraw` | Withdraw funds |
+| `POST` | `/api/v1/transactions/transfer` | Transfer between accounts |
+| `GET` | `/api/v1/transactions/account/{accountId}` | Transaction history (paginated) |
 
-#### Deposit
-
-```
-POST /api/v1/transactions/deposit
-```
-
+**Transaction response (includes fraud fields):**
 ```json
 {
-  "accountId": "<account-uuid>",
-  "amount": 1000.00
+  "id": "uuid",
+  "type": "TRANSFER_DEBIT",
+  "amount": 15000.00,
+  "balanceAfter": 5000.00,
+  "description": "Rent",
+  "sourceAccountNumber": "621234567890",
+  "destinationAccountNumber": "629876543210",
+  "flagged": true,
+  "fraudReason": "Large transaction: amount R15000.00 exceeds R10,000 threshold",
+  "createdAt": "2026-03-24T10:30:00"
 }
 ```
 
----
+#### Fraud Detection Rules
 
-#### Withdraw
+| Rule | Threshold | Behaviour |
+|---|---|---|
+| Large transaction | Amount > R10,000 | Transaction proceeds, `flagged: true` returned |
+| Rapid transfers | > 3 transfers in 5 minutes from same account | Transaction proceeds, `flagged: true` returned |
 
-```
-POST /api/v1/transactions/withdraw
-```
+Flagged transactions also write a dedicated `FRAUD_FLAGGED` entry to the audit log.
 
-```json
-{
-  "accountId": "<account-uuid>",
-  "amount": 250.00
-}
-```
+#### Audit Log Events
 
----
+| Event | When |
+|---|---|
+| `REGISTER` | New user registered |
+| `LOGIN` | Successful login |
+| `DEPOSIT` | Every deposit |
+| `WITHDRAWAL` | Every withdrawal |
+| `TRANSFER` | Every transfer (source account) |
+| `FRAUD_FLAGGED` | Dedicated entry when any fraud rule triggers |
 
-#### Transfer between accounts
-
-```
-POST /api/v1/transactions/transfer
-```
-
-```json
-{
-  "sourceAccountId": "<account-uuid>",
-  "destinationAccountId": "<account-uuid>",
-  "amount": 500.00
-}
-```
+Audit logs use `Propagation.REQUIRES_NEW` — they persist even if the parent transaction rolls back.
 
 ---
 
-#### Get transaction history
+## Testing with curl
 
-```
-GET /api/v1/transactions/account/{accountId}?page=0&size=20
-```
-
-Returns paginated transaction history. Default page size is 20.
-
----
-
-## Testing the Application with curl
-
-Here is a step-by-step walkthrough to verify everything is working from scratch.
-
-### Step 1 — Register a user
+### Step 1 — Register
 
 ```bash
 curl -s -X POST http://localhost:8080/api/v1/auth/register \
@@ -301,12 +254,10 @@ curl -s -X POST http://localhost:8080/api/v1/auth/register \
   }' | jq .
 ```
 
-Copy the `token` value from the response.
-
-### Step 2 — Set your token as a variable
+### Step 2 — Set your token
 
 ```bash
-TOKEN="<paste-your-token-here>"
+TOKEN="<paste-token-here>"
 ```
 
 ### Step 3 — Create a Cheque account
@@ -317,8 +268,6 @@ curl -s -X POST http://localhost:8080/api/v1/accounts \
   -H "Content-Type: application/json" \
   -d '{"accountType": "CHEQUE"}' | jq .
 ```
-
-Copy the `id` (account UUID) from the response.
 
 ### Step 4 — Deposit funds
 
@@ -331,23 +280,37 @@ curl -s -X POST http://localhost:8080/api/v1/transactions/deposit \
   -d "{\"accountId\": \"$ACCOUNT_ID\", \"amount\": 1000.00}" | jq .
 ```
 
-### Step 5 — Check your balance
+### Step 5 — Check balance
 
 ```bash
 curl -s http://localhost:8080/api/v1/accounts/$ACCOUNT_ID \
   -H "Authorization: Bearer $TOKEN" | jq .
 ```
 
-You should see `"balance": 1000.00`.
+### Step 6 — Transfer funds (triggers fraud detection if > R10,000)
 
-### Step 6 — View transaction history
+```bash
+ACCOUNT_ID_2="<second-account-id>"
+
+curl -s -X POST http://localhost:8080/api/v1/transactions/transfer \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"sourceAccountId\": \"$ACCOUNT_ID\",
+    \"destinationAccountId\": \"$ACCOUNT_ID_2\",
+    \"amount\": 15000.00,
+    \"description\": \"Rent\"
+  }" | jq .
+```
+
+### Step 7 — View transaction history
 
 ```bash
 curl -s "http://localhost:8080/api/v1/transactions/account/$ACCOUNT_ID?page=0&size=10" \
   -H "Authorization: Bearer $TOKEN" | jq .
 ```
 
-> **Tip:** `jq` is a lightweight JSON formatter. Install it with `sudo apt install jq` (Ubuntu/Debian) or `brew install jq` (macOS). It's optional — the API works fine without it.
+> **Tip:** Install `jq` with `brew install jq` (macOS) or `sudo apt install jq` (Ubuntu). Optional — the API works fine without it.
 
 ---
 
@@ -357,27 +320,27 @@ curl -s "http://localhost:8080/api/v1/transactions/account/$ACCOUNT_ID?page=0&si
 imali-banking-api/
 ├── pom.xml
 └── src/
-    └── main/
-        ├── java/com/imali/banking/
-        │   ├── ImaliBankingApplication.java
-        │   ├── controller/        # REST controllers (Auth, Account, Transaction)
-        │   ├── service/           # Business logic
-        │   ├── repository/        # Spring Data JPA repositories
-        │   ├── domain/
-        │   │   ├── entity/        # JPA entities (User, Account, Transaction)
-        │   │   └── enums/         # AccountType, AccountStatus, TransactionType, UserRole
-        │   ├── dto/
-        │   │   ├── request/       # Inbound request payloads
-        │   │   └── response/      # Outbound response payloads
-        │   ├── security/          # JWT provider, filter, user details service
-        │   ├── config/            # Spring Security and app bean config
-        │   └── exception/         # Custom exceptions and global exception handler
-        └── resources/
-            └── application.yml    # Application configuration
+    └── java/com/imali/banking/
+        ├── ImaliBankingApplication.java
+        ├── controller/        # REST controllers (Auth, Account, Transaction)
+        ├── service/           # Business logic, fraud detection, audit logging
+        ├── repository/        # Spring Data JPA repositories
+        ├── domain/
+        │   ├── entity/        # JPA entities (User, Account, Transaction, AuditLog)
+        │   └── enums/         # AccountType, AccountStatus, TransactionType, UserRole, AuditAction
+        ├── dto/
+        │   ├── request/       # Inbound request payloads
+        │   └── response/      # Outbound response payloads
+        ├── security/          # JWT provider, filter, user details service
+        ├── config/            # Spring Security and app bean config
+        └── exception/         # Custom exceptions and global exception handler
 ```
 
 ---
 
-## License
+## Engineering Highlights
 
-This project is open source. See the repository for details.
+- **Deadlock prevention** — transfers lock accounts in consistent UUID order so concurrent transfers never deadlock
+- **Audit trail** — every transaction records the balance snapshot after it completes, enabling point-in-time reconstruction
+- **Fraud detection** — rule-based engine flags suspicious activity without blocking the transaction
+- **Log isolation** — audit logs use `REQUIRES_NEW` propagation, surviving even a failed parent transaction

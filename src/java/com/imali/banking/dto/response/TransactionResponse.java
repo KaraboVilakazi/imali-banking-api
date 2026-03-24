@@ -19,5 +19,7 @@ public class TransactionResponse {
     private String description;
     private String sourceAccountNumber;
     private String destinationAccountNumber;
+    private boolean flagged;
+    private String fraudReason;
     private LocalDateTime createdAt;
 }

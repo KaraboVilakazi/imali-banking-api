@@ -1,6 +1,7 @@
 package com.imali.banking.service;
 
 import com.imali.banking.domain.entity.User;
+import com.imali.banking.domain.enums.AuditAction;
 import com.imali.banking.domain.enums.UserRole;
 import com.imali.banking.dto.request.LoginRequest;
 import com.imali.banking.dto.request.RegisterRequest;
@@ -26,6 +27,7 @@ public class AuthService {
     private final JwtTokenProvider jwtTokenProvider;
     private final AuthenticationManager authenticationManager;
     private final UserDetailsService userDetailsService;
+    private final AuditLogService auditLogService;
 
     @Transactional
     public AuthResponse register(RegisterRequest request) {
@@ -46,6 +48,8 @@ public class AuthService {
         UserDetails userDetails = userDetailsService.loadUserByUsername(user.getEmail());
         String token = jwtTokenProvider.generateToken(userDetails);
 
+        auditLogService.log(AuditAction.REGISTER, user.getId(), "New customer registered: " + user.getEmail());
+
         return AuthResponse.builder()
                 .accessToken(token)
                 .build();
@@ -58,6 +62,10 @@ public class AuthService {
 
         UserDetails userDetails = userDetailsService.loadUserByUsername(request.getEmail());
         String token = jwtTokenProvider.generateToken(userDetails);
+
+        User user = userRepository.findByEmail(request.getEmail())
+                .orElseThrow();
+        auditLogService.log(AuditAction.LOGIN, user.getId(), "Login from: " + request.getEmail());
 
         return AuthResponse.builder()
                 .accessToken(token)
