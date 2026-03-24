@@ -1,6 +1,8 @@
 # Imali Banking API
 
-A production-grade RESTful banking API built with Spring Boot 3 and Java 17. Imali (meaning *money* in Zulu) provides core retail banking operations including user authentication, account management, and financial transactions — secured with JWT, backed by PostgreSQL, and equipped with audit logging and fraud detection.
+A production-style RESTful banking API built with Spring Boot 3 and Java 17. Imali (meaning *money* in Zulu) provides core retail banking operations including user authentication, account management, and financial transactions — secured with JWT, backed by PostgreSQL, and equipped with audit logging and fraud detection.
+
+> Designed to simulate real-world banking system constraints including concurrency control, audit compliance, and fraud detection.
 
 ---
 
@@ -72,6 +74,15 @@ Client
   ▼
 [PostgreSQL]               ← accounts / transactions / audit_logs
 ```
+
+---
+
+## Key Design Decisions
+
+- **Pessimistic locking** — both accounts in a transfer are locked in consistent UUID order before any balance update, guaranteeing correctness under concurrent load and preventing deadlocks
+- **Audit log isolation** — `AuditLogService` runs in `REQUIRES_NEW` propagation, so audit records are written and committed independently; a failed transaction does not erase its audit trail
+- **Non-blocking fraud detection** — flagged transactions are processed normally and marked with `flagged: true`, mirroring how real banking systems quarantine suspicious activity for review rather than rejecting it outright
+- **Balance snapshots** — every `Transaction` record stores `balanceAfter` at the time of the operation, enabling point-in-time account reconstruction without replaying the full transaction history
 
 ---
 
