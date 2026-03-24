@@ -13,7 +13,9 @@ A production-style RESTful banking API built with Spring Boot 3 and Java 17. Ima
 - [Architecture](#architecture)
 - [Prerequisites](#prerequisites)
 - [Getting Started](#getting-started)
+- [Running with Docker](#running-with-docker)
 - [Running the Tests](#running-the-tests)
+- [CI Pipeline](#ci-pipeline)
 - [API Reference](#api-reference)
 - [Testing with curl](#testing-with-curl)
 - [Project Structure](#project-structure)
@@ -44,6 +46,8 @@ A production-style RESTful banking API built with Spring Boot 3 and Java 17. Ima
 | Security | Spring Security + JWT (JJWT) |
 | Persistence | Spring Data JPA + Hibernate |
 | Database | PostgreSQL |
+| Containerisation | Docker + Docker Compose |
+| CI | GitHub Actions |
 | Docs | Swagger UI (springdoc-openapi) |
 | Build | Maven |
 | Test DB | H2 (in-memory, test scope only) |
@@ -88,6 +92,8 @@ Client
 
 ## Prerequisites
 
+### Running locally (without Docker)
+
 - **Java 17+** — [Download JDK](https://adoptium.net/)
 - **Maven 3.8+** — [Download Maven](https://maven.apache.org/download.cgi)
 - **PostgreSQL 13+** — [Download PostgreSQL](https://www.postgresql.org/download/)
@@ -97,6 +103,10 @@ java -version
 mvn -version
 psql --version
 ```
+
+### Running with Docker
+
+- **Docker Desktop** — [Download Docker](https://www.docker.com/products/docker-desktop/)
 
 ---
 
@@ -149,13 +159,67 @@ http://localhost:8080/swagger-ui/index.html
 
 ---
 
+## Running with Docker
+
+The easiest way to run the full stack. Docker Compose starts PostgreSQL and the application together — no local Java or database setup needed.
+
+```bash
+docker compose up --build
+```
+
+The API starts at **http://localhost:8080**. PostgreSQL is exposed on port `5432`.
+
+To stop and remove containers:
+
+```bash
+docker compose down
+```
+
+To also remove the persisted database volume:
+
+```bash
+docker compose down -v
+```
+
+Environment variables can be overridden at runtime:
+
+```bash
+DB_USERNAME=postgres DB_PASSWORD=secret JWT_SECRET=your_hex_secret docker compose up --build
+```
+
+---
+
 ## Running the Tests
 
 ```bash
 mvn test
 ```
 
-Uses an H2 in-memory database — no additional setup required.
+Uses an H2 in-memory database — no PostgreSQL setup required. The `test` Spring profile is activated automatically via `@ActiveProfiles("test")` on each test class, which loads `application-test.yml`.
+
+The test suite covers 19 integration tests across three classes:
+
+| Class | Coverage |
+|---|---|
+| `AuthIntegrationTest` | Register, login, duplicate email, validation errors, wrong password |
+| `AccountIntegrationTest` | Create account, list accounts, get by ID, ownership enforcement |
+| `TransactionIntegrationTest` | Deposit, withdraw, transfer, fraud flagging, insufficient funds, transaction history |
+
+---
+
+## CI Pipeline
+
+A GitHub Actions workflow runs on every push and pull request:
+
+```
+.github/workflows/ci.yml
+```
+
+- Checks out the code
+- Sets up Java 17 (Temurin) with Maven dependency caching
+- Runs `mvn test -B` against H2 — no external services required
+
+Status badge can be added to this README once the repo is connected to Actions.
 
 ---
 
@@ -329,22 +393,37 @@ curl -s "http://localhost:8080/api/v1/transactions/account/$ACCOUNT_ID?page=0&si
 
 ```
 imali-banking-api/
+├── Dockerfile                          # Multi-stage build (Maven → JRE alpine)
+├── docker-compose.yml                  # App + PostgreSQL stack
 ├── pom.xml
+├── .github/
+│   └── workflows/
+│       └── ci.yml                      # GitHub Actions CI (mvn test on push/PR)
 └── src/
-    └── java/com/imali/banking/
-        ├── ImaliBankingApplication.java
-        ├── controller/        # REST controllers (Auth, Account, Transaction)
-        ├── service/           # Business logic, fraud detection, audit logging
-        ├── repository/        # Spring Data JPA repositories
-        ├── domain/
-        │   ├── entity/        # JPA entities (User, Account, Transaction, AuditLog)
-        │   └── enums/         # AccountType, AccountStatus, TransactionType, UserRole, AuditAction
-        ├── dto/
-        │   ├── request/       # Inbound request payloads
-        │   └── response/      # Outbound response payloads
-        ├── security/          # JWT provider, filter, user details service
-        ├── config/            # Spring Security and app bean config
-        └── exception/         # Custom exceptions and global exception handler
+    ├── java/com/imali/banking/
+    │   ├── ImaliBankingApplication.java
+    │   ├── controller/        # REST controllers (Auth, Account, Transaction)
+    │   ├── service/           # Business logic, fraud detection, audit logging
+    │   ├── repository/        # Spring Data JPA repositories
+    │   ├── domain/
+    │   │   ├── entity/        # JPA entities (User, Account, Transaction, AuditLog)
+    │   │   └── enums/         # AccountType, AccountStatus, TransactionType, UserRole, AuditAction
+    │   ├── dto/
+    │   │   ├── request/       # Inbound request payloads
+    │   │   └── response/      # Outbound response payloads
+    │   ├── security/          # JWT provider, filter, user details service
+    │   ├── config/            # Spring Security and app bean config
+    │   └── exception/         # Custom exceptions and global exception handler
+    ├── resources/
+    │   └── application.yml             # App config (datasource, JWT, logging)
+    └── test/
+        ├── java/com/imali/banking/
+        │   └── integration/            # @SpringBootTest integration tests
+        │       ├── AuthIntegrationTest.java
+        │       ├── AccountIntegrationTest.java
+        │       └── TransactionIntegrationTest.java
+        └── resources/
+            └── application-test.yml    # H2 datasource config for test profile
 ```
 
 ---
