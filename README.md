@@ -1,5 +1,7 @@
 # Imali Banking API
 
+![CI](https://github.com/KaraboVilakazi/imali-banking-api/actions/workflows/ci.yml/badge.svg)
+
 A production-style RESTful banking API built with Spring Boot 3 and Java 17. Imali (meaning *money* in Zulu) provides core retail banking operations including user authentication, account management, and financial transactions, secured with JWT, backed by PostgreSQL, and equipped with audit logging and fraud detection.
 
 > Designed to simulate real-world banking system constraints including concurrency control, audit compliance, and fraud detection.
